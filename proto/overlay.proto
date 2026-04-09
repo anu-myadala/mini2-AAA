@@ -1,0 +1,168 @@
+// mini2 overlay.proto
+// Two services on every node:
+//   Portal  - only used by external clients, served only meaningfully by node A
+//   Overlay - internal node-to-node communication (forward, push, abort, ping)
+//
+// Constraint from the assignment: only plain unary RPCs are used.
+// No server/client streaming and no async gRPC APIs.
+//
+// Streaming semantics are implemented by the application layer:
+//   - Upstream data flow uses repeated unary PushChunk calls in the reverse
+//     direction of the query fan-out (this is how we get "two-way without
+//     request-response").
+//   - The client drives delivery pace by repeatedly calling FetchChunk
+//     until the Portal returns final=true.
+
+syntax = "proto3";
+
+package mini2;
+
+option cc_enable_arenas = true;
+
+// ---- Domain types (reused from mini1 schema) ----
+
+enum BoroughEnum {
+  B_UNSPECIFIED   = 0;
+  B_MANHATTAN     = 1;
+  B_BROOKLYN      = 2;
+  B_QUEENS        = 3;
+  B_BRONX         = 4;
+  B_STATEN_ISLAND = 5;
+}
+
+// One row of NYC 311 data. Note: typed fields, not strings-for-everything.
+message Row311 {
+  uint64      unique_key     = 1;
+  uint32      created_ymd    = 2;  // YYYYMMDD packed
+  BoroughEnum borough        = 3;
+  double      latitude       = 4;
+  double      longitude      = 5;
+  string      complaint_type = 6;  // only field that is genuinely string
+}
+
+// Query predicates. Zero/empty fields mean "any".
+message QuerySpec {
+  BoroughEnum borough        = 1;
+  string      complaint_type = 2;
+  uint32      date_from      = 3;  // inclusive YYYYMMDD, 0 = unbounded
+  uint32      date_to        = 4;  // inclusive YYYYMMDD, 0 = unbounded
+  double      min_lat        = 5;
+  double      max_lat        = 6;
+  double      min_lon        = 7;
+  double      max_lon        = 8;
+  bool        use_geo_box    = 9;  // set false to ignore lat/lon predicates
+  uint32      max_rows       = 10; // 0 = no cap
+}
+
+// ---- Portal service (client <-> A) ----
+
+message SubmitRequest {
+  string    client_id = 1;
+  QuerySpec spec      = 2;
+}
+
+message SubmitAck {
+  bool   accepted   = 1;
+  string request_id = 2;  // opaque handle returned to client
+  string error      = 3;
+}
+
+message FetchRequest {
+  string request_id = 1;
+  uint32 max_rows   = 2;  // client-side hint; 0 = "use portal suggestion"
+  bool   block      = 3;  // if true, portal may block briefly waiting for data
+}
+
+message ChunkResponse {
+  string            request_id         = 1;
+  repeated Row311   rows               = 2;
+  bool              final              = 3;  // no more rows after this one
+  uint32            suggested_next_max = 4;  // dynamic chunk-size hint
+  uint64            rows_so_far        = 5;
+  uint32            pending_producers  = 6;
+  bool              canceled           = 7;
+}
+
+message CancelRequest {
+  string request_id = 1;
+  string reason     = 2;
+}
+message CancelAck { bool accepted = 1; }
+
+message StatsRequest { string request_id = 1; }  // empty = whole-node stats
+message StatsResponse {
+  string node_id           = 1;
+  uint32 active_requests   = 2;
+  uint64 buffered_rows     = 3;
+  uint64 total_rows_served = 4;
+  uint32 peer_count        = 5;
+  uint64 partition_rows    = 6;
+}
+
+service Portal {
+  rpc SubmitQuery (SubmitRequest) returns (SubmitAck);
+  rpc FetchChunk  (FetchRequest)  returns (ChunkResponse);
+  rpc CancelQuery (CancelRequest) returns (CancelAck);
+  rpc GetStats    (StatsRequest)  returns (StatsResponse);
+}
+
+// ---- Overlay service (node <-> node) ----
+
+// ForwardQuery is the downstream fan-out. Callee acks immediately and
+// performs the local work asynchronously; data comes back via PushChunk.
+message ForwardQueryRequest {
+  string            request_id       = 1;
+  QuerySpec         spec             = 2;
+  string            origin_node      = 3;  // the portal (usually "A")
+  string            from_node        = 4;  // immediate sender
+  repeated string   visited          = 5;  // loop breaker for cyclic overlays
+  uint32            ttl              = 6;  // hop budget
+  uint64            issued_at_unix_us = 7;
+}
+message ForwardQueryAck {
+  bool   accepted = 1;
+  string node_id  = 2;
+  string error    = 3;
+}
+
+// PushChunk moves result rows UP the tree toward the portal.
+// It is a regular unary RPC called in the "reverse" direction of the
+// original fan-out. This is how we deliver streaming semantics without
+// using gRPC streaming APIs.
+message PushChunkRequest {
+  string            request_id     = 1;
+  string            from_node      = 2;  // immediate sender (may be a forwarder)
+  string            producer_node  = 3;  // leaf that computed these rows
+  repeated Row311   rows           = 4;
+  bool              done           = 5;  // producer_node has finished
+  uint32            seq            = 6;  // monotonic per producer
+  uint64            produced_at_us = 7;
+}
+message PushChunkAck {
+  bool   ok               = 1;
+  uint32 buffered_rows    = 2;  // for backpressure hints
+  bool   canceled         = 3;
+  uint32 suggested_delay_ms = 4;
+}
+
+message AbortRequest {
+  string request_id = 1;
+  string from_node  = 2;
+  string reason     = 3;
+}
+message AbortAck { bool ok = 1; }
+
+message PingRequest  { string from_node = 1; }
+message PingResponse {
+  string node_id   = 1;
+  uint64 unix_us   = 2;
+  uint64 uptime_s  = 3;
+  uint64 partition_rows = 4;
+}
+
+service Overlay {
+  rpc ForwardQuery (ForwardQueryRequest) returns (ForwardQueryAck);
+  rpc PushChunk    (PushChunkRequest)    returns (PushChunkAck);
+  rpc Abort        (AbortRequest)        returns (AbortAck);
+  rpc Ping         (PingRequest)         returns (PingResponse);
+}

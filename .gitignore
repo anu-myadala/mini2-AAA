@@ -1,0 +1,10 @@
+cpp/build/
+python/_gen/
+data/part_*.csv
+data/raw/
+logs/
+.pids
+__pycache__/
+*.pyc
+*.o
+*.a

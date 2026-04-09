@@ -1,0 +1,262 @@
+{
+  "portal": "127.0.0.1:50051",
+  "reps": 3,
+  "slow_ms": 100,
+  "timestamp": "2026-04-08 01:32:18",
+  "scenarios": {
+    "full_scan_drain_fast": {
+      "reps": 3,
+      "rows_returned": {
+        "mean": 50000,
+        "stdev": 0.0,
+        "min": 50000,
+        "max": 50000
+      },
+      "wall_ms": {
+        "mean": 81.4,
+        "stdev": 1.81,
+        "min": 79.62,
+        "max": 83.23,
+        "p50": 81.36,
+        "p95": 81.36
+      },
+      "avg_chunk_rows_per_run": {
+        "mean": 2344.9,
+        "min": 2272.7,
+        "max": 2381.0
+      },
+      "fetch_latency_ms": {
+        "mean": 3.81,
+        "stdev": 1.17,
+        "min": 1.73,
+        "max": 6.7,
+        "p50": 3.94,
+        "p95": 5.53
+      },
+      "throughput_rows_per_sec": 614219.4
+    },
+    "full_scan_drain_slow": {
+      "reps": 3,
+      "rows_returned": {
+        "mean": 50000,
+        "stdev": 0.0,
+        "min": 50000,
+        "max": 50000
+      },
+      "wall_ms": {
+        "mean": 10251.72,
+        "stdev": 24.48,
+        "min": 10223.46,
+        "max": 10265.99,
+        "p50": 10265.72,
+        "p95": 10265.72
+      },
+      "avg_chunk_rows_per_run": {
+        "mean": 510.2,
+        "min": 510.2,
+        "max": 510.2
+      },
+      "fetch_latency_ms": {
+        "mean": 3.96,
+        "stdev": 1.1,
+        "min": 1.24,
+        "max": 9.09,
+        "p50": 3.89,
+        "p95": 5.66
+      },
+      "throughput_rows_per_sec": 4877.2
+    },
+    "borough_brooklyn": {
+      "reps": 3,
+      "rows_returned": {
+        "mean": 10050,
+        "stdev": 0.0,
+        "min": 10050,
+        "max": 10050
+      },
+      "wall_ms": {
+        "mean": 19.12,
+        "stdev": 2.3,
+        "min": 17.11,
+        "max": 21.63,
+        "p50": 18.64,
+        "p95": 18.64
+      },
+      "avg_chunk_rows_per_run": {
+        "mean": 888.3,
+        "min": 837.5,
+        "max": 913.6
+      },
+      "fetch_latency_ms": {
+        "mean": 1.69,
+        "stdev": 0.89,
+        "min": 0.56,
+        "max": 4.4,
+        "p50": 1.46,
+        "p95": 3.06
+      },
+      "throughput_rows_per_sec": 525502.8
+    },
+    "date_range_2024": {
+      "reps": 3,
+      "rows_returned": {
+        "mean": 24944,
+        "stdev": 0.0,
+        "min": 24944,
+        "max": 24944
+      },
+      "wall_ms": {
+        "mean": 44.56,
+        "stdev": 1.34,
+        "min": 43.43,
+        "max": 46.03,
+        "p50": 44.23,
+        "p95": 44.23
+      },
+      "avg_chunk_rows_per_run": {
+        "mean": 1628.3,
+        "min": 1559,
+        "max": 1662.9
+      },
+      "fetch_latency_ms": {
+        "mean": 2.9,
+        "stdev": 1.16,
+        "min": 1.25,
+        "max": 6.48,
+        "p50": 2.83,
+        "p95": 4.53
+      },
+      "throughput_rows_per_sec": 559733.7
+    },
+    "geo_box": {
+      "reps": 3,
+      "rows_returned": {
+        "mean": 9332,
+        "stdev": 0.0,
+        "min": 9332,
+        "max": 9332
+      },
+      "wall_ms": {
+        "mean": 17.27,
+        "stdev": 0.76,
+        "min": 16.75,
+        "max": 18.14,
+        "p50": 16.9,
+        "p95": 16.9
+      },
+      "avg_chunk_rows_per_run": {
+        "mean": 848.4,
+        "min": 848.4,
+        "max": 848.4
+      },
+      "fetch_latency_ms": {
+        "mean": 1.57,
+        "stdev": 1.0,
+        "min": 0.31,
+        "max": 4.37,
+        "p50": 1.28,
+        "p95": 3.43
+      },
+      "throughput_rows_per_sec": 540507.5
+    },
+    "multi_field": {
+      "reps": 3,
+      "rows_returned": {
+        "mean": 973,
+        "stdev": 0.0,
+        "min": 973,
+        "max": 973
+      },
+      "wall_ms": {
+        "mean": 1.91,
+        "stdev": 0.17,
+        "min": 1.72,
+        "max": 2.02,
+        "p50": 2.0,
+        "p95": 2.0
+      },
+      "avg_chunk_rows_per_run": {
+        "mean": 486.5,
+        "min": 486.5,
+        "max": 486.5
+      },
+      "fetch_latency_ms": {
+        "mean": 0.96,
+        "stdev": 0.42,
+        "min": 0.57,
+        "max": 1.42,
+        "p50": 1.15,
+        "p95": 1.42
+      },
+      "throughput_rows_per_sec": 508110.0
+    },
+    "cancel_mid_query": {
+      "reps": 3,
+      "rows_returned": {
+        "mean": 788,
+        "stdev": 204.38199529312752,
+        "min": 670,
+        "max": 1024
+      },
+      "wall_ms": {
+        "mean": 7382.41,
+        "stdev": 2874.19,
+        "min": 4063.58,
+        "max": 9045.65,
+        "p50": 9038.0,
+        "p95": 9038.0
+      },
+      "avg_chunk_rows_per_run": {
+        "mean": 0,
+        "min": 0,
+        "max": 0
+      },
+      "fetch_latency_ms": {
+        "mean": 0,
+        "stdev": 0,
+        "min": 0,
+        "max": 0,
+        "p50": 0,
+        "p95": 0
+      },
+      "throughput_rows_per_sec": 106.7
+    },
+    "concurrent_fast_vs_slow_fast_half": {
+      "reps": 3,
+      "rows_returned": {
+        "mean": 49710,
+        "stdev": 251.1473670974872,
+        "min": 49565,
+        "max": 50000
+      },
+      "wall_ms": {
+        "mean": 19450.74,
+        "stdev": 21188.32,
+        "min": 124.21,
+        "max": 42106.65,
+        "p50": 16121.38,
+        "p95": 16121.38
+      },
+      "avg_chunk_rows_per_run": {
+        "mean": 1161.5,
+        "min": 660.9,
+        "max": 1851.9
+      },
+      "fetch_latency_ms": {
+        "mean": 0.32,
+        "stdev": 11.39,
+        "min": 0.13,
+        "max": 2007.49,
+        "p50": 0.25,
+        "p95": 0.28
+      },
+      "throughput_rows_per_sec": 2555.7
+    }
+  },
+  "node_a_stats": {
+    "node_id": "A",
+    "active_requests": 0,
+    "buffered_rows": 0,
+    "total_rows_served": 1575652
+  }
+}
