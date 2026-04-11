@@ -81,12 +81,18 @@ uint64_t parseU64Safe(const std::string& s) {
 void PartitionStore::load(const std::string& csv_path, std::size_t row_hint) {
     std::ifstream in(csv_path);
     if (!in) {
-        // A node with no partition file is allowed (e.g., pure forwarder).
-        std::cerr << "[PartitionStore] no partition file at '" << csv_path
-                  << "', this node will hold zero rows" << std::endl;
+        std::cerr << "[PartitionStore] no file at '" << csv_path << "'\n";
         return;
     }
 
+    // Estimate row count from file size to pre-reserve (avoids repeated
+    // realloc + malloc overhead — prof's mini1 feedback).
+    if (row_hint == 0) {
+        in.seekg(0, std::ios::end);
+        auto fsz = static_cast<std::streamoff>(in.tellg());
+        in.seekg(0, std::ios::beg);
+        if (fsz > 0) row_hint = static_cast<std::size_t>(fsz / 60);
+    }
     if (row_hint > 0) {
         unique_keys_.reserve(row_hint);
         created_ymds_.reserve(row_hint);

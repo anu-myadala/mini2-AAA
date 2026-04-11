@@ -65,6 +65,7 @@ message SubmitAck {
   bool   accepted   = 1;
   string request_id = 2;  // opaque handle returned to client
   string error      = 3;
+  bool   cached     = 4;  // true when the result was served from the portal cache
 }
 
 message FetchRequest {
@@ -97,6 +98,8 @@ message StatsResponse {
   uint64 total_rows_served = 4;
   uint32 peer_count        = 5;
   uint64 partition_rows    = 6;
+  uint64 cache_hits        = 7;  // portal-only: how many SubmitQuery calls hit the cache
+  uint64 cache_misses      = 8;  // portal-only: how many SubmitQuery calls missed
 }
 
 service Portal {

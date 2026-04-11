@@ -44,7 +44,9 @@ std::string randomHex(std::size_t n) {
 } // namespace
 
 NodeServer::NodeServer(std::string my_id, Config cfg)
-  : my_id_(std::move(my_id)), cfg_(std::move(cfg)) {}
+  : my_id_(std::move(my_id)), cfg_(std::move(cfg)),
+    cache_(static_cast<std::size_t>(cfg_.paramInt("cache_capacity",  256)),
+           static_cast<std::size_t>(cfg_.paramInt("cache_max_rows", 50000))) {}
 
 NodeServer::~NodeServer() { shutdown(); if (janitor_.joinable()) janitor_.join(); }
 
@@ -138,15 +140,41 @@ grpc::Status NodeServer::SubmitQuery(grpc::ServerContext*,
         return grpc::Status::OK;
     }
 
+    // Cache check: serve repeated queries from the LRU cache without re-scanning.
+    auto cached_rows = cache_.get(req->spec());
+    if (cached_rows) {
+        std::string rid = newRequestId();
+        auto st = registry_.create(
+            rid, req->client_id(), req->spec(),
+            static_cast<std::size_t>(cfg_.paramInt("chunk_buffer_cap", 65536)),
+            1,   // one virtual producer: the cache
+            cfg_.paramInt("initial_chunk_rows", 512),
+            cfg_.paramInt("min_chunk_rows", 64),
+            cfg_.paramInt("max_chunk_rows", 4096));
+        st->cache_collect = false;  // already in cache, don't re-store
+        st->buffer->markProducerStarted("__cache__");
+        std::vector<Row311> prefill(*cached_rows);
+        st->buffer->pushRows(std::move(prefill));
+        st->buffer->markProducerDone("__cache__");
+        ack->set_accepted(true);
+        ack->set_request_id(rid);
+        ack->set_cached(true);
+        std::cerr << "[" << my_id_ << "] cache hit rid=" << rid
+                  << " rows=" << cached_rows->size() << "\n";
+        return grpc::Status::OK;
+    }
+
     std::string rid = newRequestId();
-    std::size_t expected = cfg_.allNodeIds().size();   // every node contributes
+    std::size_t expected = cfg_.allNodeIds().size();
     auto st = registry_.create(
         rid, req->client_id(), req->spec(),
-        cfg_.paramInt("chunk_buffer_cap", 65536),
+        static_cast<std::size_t>(cfg_.paramInt("chunk_buffer_cap", 65536)),
         expected,
         cfg_.paramInt("initial_chunk_rows", 512),
         cfg_.paramInt("min_chunk_rows", 64),
         cfg_.paramInt("max_chunk_rows", 4096));
+    st->cache_max_rows = static_cast<std::size_t>(cfg_.paramInt("cache_max_rows", 50000));
+    st->cache_collect  = true;
 
     // Mark every node as "expected to start" so the buffer correctly tracks
     // how many producer-done events we still need to see.
@@ -217,6 +245,17 @@ grpc::Status NodeServer::FetchChunk(grpc::ServerContext*,
     int block_ms = req->block() ? cfg_.paramInt("fetch_block_ms", 150) : 0;
     auto rows = st->buffer->popUpTo(want, block_ms);
 
+    // Shadow-accumulate for result cache (single-threaded FetchChunk path per request).
+    if (st->cache_collect) {
+        if (st->cache_accum.size() + rows.size() <= st->cache_max_rows) {
+            for (const auto& r : rows) st->cache_accum.push_back(r);
+        } else {
+            st->cache_collect = false;
+            st->cache_accum.clear();
+            st->cache_accum.shrink_to_fit();
+        }
+    }
+
     for (auto& r : rows) *rsp->add_rows() = std::move(r);
     rsp->set_suggested_next_max(st->suggested_chunk);
     rsp->set_rows_so_far(st->buffer->rowsServed());
@@ -226,7 +265,10 @@ grpc::Status NodeServer::FetchChunk(grpc::ServerContext*,
     total_rows_served_ += rsp->rows().size();
 
     if (rsp->final()) {
-        // Eager cleanup. The route may still see late pushes; those are dropped.
+        if (st->cache_collect && !rsp->canceled()) {
+            cache_.put(st->spec, std::move(st->cache_accum));
+            std::cerr << "[" << my_id_ << "] cached result rid=" << req->request_id() << "\n";
+        }
         registry_.erase(req->request_id());
     }
     return grpc::Status::OK;
@@ -260,6 +302,8 @@ grpc::Status NodeServer::GetStats(grpc::ServerContext*,
     rsp->set_total_rows_served(total_rows_served_.load());
     rsp->set_peer_count(static_cast<std::uint32_t>(peer_clients_.size()));
     rsp->set_partition_rows(store_.size());
+    rsp->set_cache_hits(cache_.hits());
+    rsp->set_cache_misses(cache_.misses());
     return grpc::Status::OK;
 }
 

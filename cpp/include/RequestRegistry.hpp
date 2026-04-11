@@ -22,7 +22,6 @@ struct RequestState {
     QuerySpec                      spec;
     std::shared_ptr<ChunkBuffer>   buffer;
 
-    // Dynamic chunk sizing (EWMA of client fetch cadence).
     std::uint32_t suggested_chunk = 512;
     std::uint32_t min_chunk       = 64;
     std::uint32_t max_chunk       = 4096;
@@ -30,7 +29,11 @@ struct RequestState {
     std::chrono::steady_clock::time_point last_fetch_at;
     double        ewma_fetch_ms  = 100.0;
 
-    // Update chunk hint based on observed fetch cadence.
+    // Cache collection: FetchChunk accumulates rows here; stored on final drain.
+    bool                cache_collect  = true;
+    std::size_t         cache_max_rows = 50000;
+    std::vector<Row311> cache_accum;
+
     void recordFetch();
 };
 

@@ -84,6 +84,7 @@ add_library(mini2_core STATIC
     src/PartitionStore.cpp
     src/QueryEngine.cpp
     src/ChunkBuffer.cpp
+    src/QueryCache.cpp
     src/RequestRegistry.cpp
     src/PeerClient.cpp
     src/NodeServer.cpp

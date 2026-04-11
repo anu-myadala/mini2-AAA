@@ -26,6 +26,7 @@
 #include "Config.hpp"
 #include "PartitionStore.hpp"
 #include "PeerClient.hpp"
+#include "QueryCache.hpp"
 #include "RequestRegistry.hpp"
 #include "overlay.grpc.pb.h"
 
@@ -81,6 +82,7 @@ private:
     // Members -------------------------------------------------------------
     std::string       my_id_;
     Config            cfg_;
+    QueryCache        cache_;              // portal-only: LRU result cache
     PartitionStore    store_;
 
     std::unordered_map<std::string, std::unique_ptr<PeerClient>> peer_clients_;

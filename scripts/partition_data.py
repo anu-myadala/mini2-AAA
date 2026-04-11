@@ -26,13 +26,29 @@ _HEADER_CANON = ["unique_key", "created_ymd", "borough", "latitude", "longitude"
 
 
 def parse_ymd(s: str) -> int:
+    """Convert a date string to a packed YYYYMMDD integer.
+
+    Handles three formats found in NYC OpenData and derived CSVs:
+      - Already packed:  "20240115"          → 20240115
+      - ISO-8601 prefix: "2024-01-15 ..."    → 20240115
+      - US slash format: "01/15/2024 ..."    → 20240115  (NYC 311 OpenData default)
+    """
     if not s:
         return 0
-    if len(s) >= 8 and s.isdigit():
+    s = s.strip()
+    # Already packed YYYYMMDD (8+ leading digits)
+    if len(s) >= 8 and s[:8].isdigit():
         return int(s[:8])
+    # ISO-8601: YYYY-MM-DD[T...]
     if len(s) >= 10 and s[4] == "-" and s[7] == "-":
         try:
             return int(s[0:4]) * 10000 + int(s[5:7]) * 100 + int(s[8:10])
+        except ValueError:
+            return 0
+    # US slash: MM/DD/YYYY[ HH:MM:SS ...] — NYC 311 OpenData default
+    if len(s) >= 10 and s[2] == "/" and s[5] == "/":
+        try:
+            return int(s[6:10]) * 10000 + int(s[0:2]) * 100 + int(s[3:5])
         except ValueError:
             return 0
     return 0
