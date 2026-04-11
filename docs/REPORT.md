@@ -2,7 +2,7 @@
 
 ## Team & dataset
 
-Team: Anukrithi Myadala, Ali Ucer, Asim Mohammed, Sasank.
+Team: Anukrithi Myadala, Ali Ucer, Asim Mohammed.
 Dataset: NYC 311 Service Requests (same as mini1), partitioned across
 nine nodes via `hash(unique_key) % 9`. Reproducible synthetic data is
 available via `scripts/generate_synthetic.py` for smoke tests and for

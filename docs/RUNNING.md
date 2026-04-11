@@ -14,7 +14,7 @@
 ## One-time setup
 
 ```bash
-cd mini2-claude
+cd mini2-AAA
 python3 -m pip install -r python/requirements.txt
 scripts/gen_proto.sh        # produces python/_gen/{overlay_pb2,overlay_pb2_grpc}.py
 scripts/build_cpp.sh        # produces cpp/build/{node_server,portal_client}

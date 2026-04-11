@@ -8,7 +8,7 @@
 
 ```bash
 # 1. Build C++ (both laptops if using two)
-cd mini2-claude/cpp && mkdir -p build && cd build
+cd mini2-AAA/cpp && mkdir -p build && cd build
 cmake -DCMAKE_BUILD_TYPE=Release .. && make -j$(nproc)
 
 # 2. Generate Python proto stubs

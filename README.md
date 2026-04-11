@@ -11,7 +11,7 @@ This builds on the same NYC 311 dataset used in mini1.
 ## What's in the box
 
 ```
-mini2-claude/
+mini2-AAA/
 ├── proto/overlay.proto         # Portal + Overlay services
 ├── config/topology.conf        # the entire topology lives here, NOT in code
 ├── cpp/                        # C++17 node + client (gRPC + protobuf)
@@ -26,7 +26,7 @@ mini2-claude/
 ## Quick start (one machine, smoke test with synthetic data)
 
 ```bash
-cd mini2-claude
+cd mini2-AAA
 
 # 1) Python deps for the Python node and the proto generator
 python3 -m pip install -r python/requirements.txt
