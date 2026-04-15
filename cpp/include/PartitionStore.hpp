@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include "Indices.hpp"
 #include "Record311.hpp"
 
 namespace mini2 {
@@ -48,6 +49,12 @@ public:
     const std::vector<double>&      lons()        const { return longitudes_; }
     const std::vector<std::string>& complaints()  const { return complaint_types_; }
 
+    // Secondary indices built once at the end of load(). See Indices.hpp.
+    // QueryEngine uses these to avoid full linear scans on selective
+    // queries; this directly addresses the prof's mini1 critique that
+    // "Phase 3 is still a linear search, with column storage."
+    const Indices& indices() const { return indices_; }
+
 private:
     std::vector<uint64_t>    unique_keys_;
     std::vector<uint32_t>    created_ymds_;
@@ -55,6 +62,7 @@ private:
     std::vector<double>      latitudes_;
     std::vector<double>      longitudes_;
     std::vector<std::string> complaint_types_;
+    Indices                  indices_;
 };
 
 } // namespace mini2

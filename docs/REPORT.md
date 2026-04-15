@@ -190,6 +190,53 @@ numbers were "clean", because the gap between
 "protocol-fair" and "implementation-fair" is exactly the kind of
 distinction a systems course should make visible.
 
+### 4.3a Indexed scan vs linear scan (response to mini1 critique)
+
+The mini1 feedback called out that "Phase 3 is still a linear search,
+with column storage." The new `Indices` module (see §5 row 6) replaces
+the linear scan with a candidate-list intersection over four secondary
+indices. `scripts/bench_index.py` runs the same five `QuerySpec`s twice
+on a 100,000-row partition (`data/part_A.csv`), once with indices
+enabled and once with `force_linear=True`, and writes raw stats to
+`docs/index_bench.json`. Numbers below are mean of 5 reps in the
+in-sandbox Python implementation; the C++ implementation has the same
+algorithm and is expected to widen the wins because `std::set_intersection`
+is much faster than a Python merge.
+
+| Scenario | Rows out | With indices (ms) | Linear scan (ms) | Speedup |
+|---|---:|---:|---:|---:|
+| baseline (give-me-everything) | 100,000 | 28.81 | 27.12 | 0.94× |
+| borough = BROOKLYN | 20,106 | 4.90 | 9.91 | **2.0×** |
+| date in 2024 (≈50% selectivity) | 50,125 | 18.65 | 17.53 | 0.94× |
+| geo box (small Brooklyn rectangle) | 6,298 | 2.55 | 13.04 | **5.1×** |
+| borough × date × geo (combined) | 2,544 | 12.72 | 7.37 | **0.58×** |
+
+Three observations worth naming explicitly:
+
+- **The spatial grid is the biggest single win** (5.1×). It is also the
+  direct architectural answer to the prof's "multi-field queries (lat/lon)"
+  question — without an index, every row pays the four-comparison
+  bounding-box check; with the grid, only the rows in cells that
+  actually overlap the box are even loaded.
+- **Index overhead is real and visible in the baseline and date-range
+  rows.** When a predicate matches half the partition, the cost of
+  building and intersecting the candidate vector roughly equals the
+  cost of just walking every row. Treating the index as "always on"
+  would be wrong; the engine should pick the cheaper plan.
+- **The combined query is a 0.6× regression** (12.72 ms vs 7.37 ms).
+  Reason: the date range alone produces a 50,125-row candidate vector
+  that must be allocated, sorted by row id, and then intersected with
+  the borough and geo lists, while the original linear scan would have
+  short-circuited the moment the borough check failed on a row. This
+  is a textbook *cost model* problem and is enumerated as future work
+  item §7.6 below. We report the regression rather than hide it because
+  recognizing where indices stop helping is part of the lesson.
+
+The takeaway: indices solve the linear-scan critique decisively for
+selective single-predicate queries (especially geo) but expose a new
+question about query planning that we now have to answer. That's a
+better mini2 outcome than "we made everything 2× faster".
+
 ### 4.3 Reproducibility
 
 To regenerate these numbers from scratch:
@@ -225,8 +272,8 @@ below with a pointer into the code.
 | "structure padding" | Columnar SoA storage avoids per-row padding entirely. Row-major AoS would waste ~16 bytes per row on our 6 fields; SoA on 50,000 rows saves ~800 KB and keeps each predicate's scan in an L2-resident column. | `cpp/include/PartitionStore.hpp`, SoA column definitions |
 | "use jemalloc / tcmalloc" | The run scripts accept `LD_PRELOAD=libjemalloc.so.2 ./node_server` (documented in `RUNNING.md`); no source change required. We verified the allocator hook works; we do not have a recorded benchmark with/without because jemalloc is not installed in the measurement sandbox. | `scripts/run_node.sh`, `docs/RUNNING.md` |
 | "OpenMP critical-section contention" | Cross-process result join eliminates shared-memory `#pragma omp critical` entirely. The analogue — "merge into a shared container" — is "every node `PushChunk`s into A's per-request buffer over its own gRPC channel". The buffer's lock is held only for the duration of `pushRows(batch)` or `popUpTo(k)`, which is `O(batch)`, not `O(N)`. §4.2 shows this directly: fetch latency remains ~4 ms under the drain-slow scenario where the buffer is at cap and being hammered by 9 concurrent producers. | `cpp/src/ChunkBuffer.cpp`, `python/node_server.py` `_BoundedBuffer` class |
-| "phase 3 still linear" | The *local* scan is still linear — mini2 is about the distribution layer, not single-node query optimization, and with our measurements showing RPC + serialize cost dominates local-scan cost for any predicate that matches ≤ ~1,000 rows, adding a local index would not show up in the numbers. However, the architecture supports per-partition indices behind `PartitionStore::scan()` without any change to the overlay; `DESIGN_RATIONALE.md` §7 sketches the Bloom-filter extension. | `cpp/include/PartitionStore.hpp::scan` signature |
-| "few fields, what about many? multi-field queries?" | The proto `Row311` has 6 typed fields; adding more is a one-line proto change and a one-line `PartitionStore` change. `QuerySpec` supports borough × complaint_type × date range × geo box in a single pass, and §4.1 scenario 6 shows a combined three-predicate query running in 1.9 ms on 50,000 rows — faster than any single-predicate query because the predicates short-circuit. | `proto/overlay.proto` `QuerySpec`, `cpp/src/QueryEngine.cpp` predicate composition |
+| "phase 3 still linear, with column storage, what could the team have done to extract more performance?" | **Replaced the linear scan with an indexed query plan.** A new `Indices` module (`cpp/include/Indices.hpp` + `Indices.cpp`, with parity in `python/partition_store.py`) builds four secondary indices once per partition at `load()` time: a hash bucket on `borough`, a hash bucket on `complaint_type`, a date-sorted vector for binary-searched range pruning, and a 2D spatial grid on (lat, lon). `QueryEngine::run` now plans the query: collects candidate row-id sets from each indexable predicate, sorts the candidates smallest-first, runs `std::set_intersection` to AND them together, and only then materializes `Row311`s for the survivors (validating the residual exact-box predicate at the end). Falls back to the original linear scan when the query has no indexable predicate. §4.4 has measured speedups on a 100k-row partition: **5.1× on a geo-box query**, **2.0× on borough-only**, ~1× on a 50%-selective date range, and a real **0.6× slowdown on a tight combined query** that we report honestly because it shows where index-intersection overhead crosses the row-by-row short-circuit cost (the cost-model fix is in §7 future work). | `cpp/include/Indices.hpp`, `cpp/src/Indices.cpp`, `cpp/src/QueryEngine.cpp::run`, `python/partition_store.py::_build_indices`/`scan`, `scripts/bench_index.py`, `docs/index_bench.json` |
+| "How would you arrange the data structures to allow for multi-field queries (e.g., lat/lon)?" | The 2D grid index is the textbook spatial answer. Cells are 0.01° on a side (≈1.1 km at NYC's latitude), so NYC fits in <2,400 cells. A geo-box query iterates only the cells overlapping the box (cheap-and-loose), then validates each row against the actual box (exact). Combined with the borough/complaint/date hash indices, *any subset* of the four predicates becomes a candidate-list intersection, so adding a fifth indexed field is one new bucket type plus one new entry in the candidate-collection step in `QueryEngine`. The `bench_index.py` scenario `borough_x_date_x_geo` exercises the three-predicate path. | `cpp/include/Indices.hpp::geoBox`, `cpp/src/Indices.cpp::geoBox`, `cpp/src/QueryEngine.cpp` step-1 candidate loop |
 
 ## 6. Things we considered and deliberately left out
 
@@ -275,6 +322,15 @@ below with a pointer into the code.
 5. **Real network-partition test harness.** `iptables -j DROP` on
    specific edges, watch the janitor recover, measure cleanup latency.
    Good next mini.
+6. **Cost-model-driven query planning.** The §4.3a numbers show that
+   indexes hurt when the candidate set is large and the predicate is
+   cheap. The fix is a small per-partition cost model: keep an EWMA of
+   `(rows_returned, ms_with_index, ms_linear)` per `(predicate kind,
+   selectivity bucket)` and pick the cheaper plan at submit time. With
+   `Indices::estimateBytes()` already exposed and a coarse "expected
+   rows" estimate available from the candidate-set sizes themselves, no
+   new index machinery is needed — just a planner that compares the
+   sum of candidate-set sizes against `total_rows_` before deciding.
 
 ## 8. File map
 
@@ -283,13 +339,16 @@ below with a pointer into the code.
 | `proto/overlay.proto` | Portal + Overlay services, typed Row311 |
 | `config/topology.conf` | All ids/ports/neighbors/partitions/params |
 | `config/topology_allpy.conf` | All-Python variant used for in-sandbox measurements |
-| `cpp/include/*.hpp` | Headers (Config, PartitionStore, QueryEngine, ChunkBuffer, RequestRegistry, PeerClient, NodeServer) |
+| `cpp/include/*.hpp` | Headers (Config, PartitionStore, **Indices**, QueryEngine, ChunkBuffer, RequestRegistry, PeerClient, NodeServer) |
+| `cpp/include/Indices.hpp` + `cpp/src/Indices.cpp` | Per-partition secondary indices (borough, complaint, sorted date, 2D spatial grid) — direct response to mini1 "phase 3 still linear" critique |
 | `cpp/src/*.cpp` | Implementations |
 | `cpp/src/server_main.cpp` | C++ node entry point |
 | `cpp/src/client_main.cpp` | C++ portal client |
 | `python/node_server.py` | Python node (Portal + Overlay services) |
 | `python/{config_loader,partition_store}.py` | Python helpers (mirror C++) |
-| `scripts/measure.py` | Measurement harness that produced §4's numbers |
+| `scripts/measure.py` | Distributed measurement harness that produced §4's numbers |
+| `scripts/bench_index.py` | Indexed-vs-linear local-scan benchmark; produces `docs/index_bench.json` (§4.3a) |
+| `docs/index_bench.json` | Raw index-bench output (machine-readable, regeneratable) |
 | `scripts/generate_synthetic.py` | Reproducible synthetic-data generator |
 | `scripts/{partition_data,build_cpp,run_node,run_all_local,kill_all,smoke_test}.sh` | Build and orchestration |
 | `docs/ARCHITECTURE.md` | End-to-end flow, services, two-host layout |

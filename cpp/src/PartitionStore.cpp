@@ -138,6 +138,19 @@ void PartitionStore::load(const std::string& csv_path, std::size_t row_hint) {
         longitudes_.push_back(lon);
         complaint_types_.push_back(std::move(complaint));
     }
+
+    // Build secondary indices once. Immutable thereafter, so concurrent
+    // queries can read them lock-free. Total cost is dominated by the
+    // O(n log n) sort of the date index; for ~250k rows per partition
+    // this is well under 100 ms in release builds.
+    indices_.build(*this);
+    std::cerr << "[PartitionStore] indices: borough_buckets="
+              << indices_.boroughBuckets()
+              << " complaint_buckets=" << indices_.complaintBuckets()
+              << " date_entries="      << indices_.dateEntries()
+              << " grid_cells="        << indices_.gridCells()
+              << " est_bytes="         << indices_.estimateBytes()
+              << "\n";
 }
 
 } // namespace mini2

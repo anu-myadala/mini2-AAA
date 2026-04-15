@@ -82,6 +82,7 @@ endif()
 add_library(mini2_core STATIC
     src/Config.cpp
     src/PartitionStore.cpp
+    src/Indices.cpp
     src/QueryEngine.cpp
     src/ChunkBuffer.cpp
     src/QueryCache.cpp
